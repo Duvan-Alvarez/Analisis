@@ -1,0 +1,1832 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CVision — Análisis Inteligente de CVs</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --ink: #0f0e0c;
+    --paper: #f5f0e8;
+    --cream: #ede8dc;
+    --gold: #c9a84c;
+    --gold-light: #e8d5a0;
+    --rust: #b84c2a;
+    --forest: #2a4a35;
+    --mist: #8a9ba8;
+    --border: #d4cbb8;
+    --white: #fdfaf5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.5;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 2px solid var(--ink);
+    padding: 0 2rem;
+    display: flex;
+    align-items: stretch;
+    position: relative;
+    background: var(--white);
+  }
+
+  .header-left {
+    padding: 2rem 3rem 2rem 0;
+    border-right: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+
+  .logo {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.8rem;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+
+  .logo span {
+    color: var(--gold);
+    font-style: italic;
+  }
+
+  .tagline {
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--mist);
+    margin-top: 0.4rem;
+  }
+
+  .header-right {
+    padding: 2rem 0 2rem 3rem;
+    display: flex;
+    align-items: center;
+    gap: 3rem;
+  }
+
+  .dashboard-btn {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    padding: 0.8rem 1.5rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 2px;
+  }
+
+  .dashboard-btn:hover {
+    background: var(--gold);
+    color: var(--ink);
+  }
+
+  .header-stat {
+    text-align: center;
+  }
+
+  .header-stat .num {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--gold);
+  }
+
+  .header-stat .label {
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--mist);
+  }
+
+  /* ── LAYOUT ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    min-height: calc(100vh - 110px);
+  }
+
+  /* ── SIDEBAR (upload panel) ── */
+  .sidebar {
+    background: var(--white);
+    border-right: 2px solid var(--ink);
+    padding: 3rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    position: sticky;
+    top: 0;
+    height: calc(100vh - 110px);
+    overflow-y: auto;
+  }
+
+  .section-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--mist);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 4px;
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    background: var(--paper);
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--gold);
+    background: var(--cream);
+  }
+
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .drop-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    display: block;
+  }
+
+  .drop-zone h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+  }
+
+  .drop-zone p {
+    font-size: 0.7rem;
+    color: var(--mist);
+  }
+
+  /* File list */
+  .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .file-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 0.72rem;
+    animation: slideIn 0.2s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .file-icon { color: var(--rust); font-size: 1rem; }
+
+  .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-remove {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--mist);
+    font-size: 1rem;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .file-remove:hover { color: var(--rust); }
+
+  /* Job description */
+  .job-textarea {
+    width: 100%;
+    min-height: 120px;
+    padding: 0.75rem 1rem;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--ink);
+    resize: vertical;
+    transition: border-color 0.2s;
+    line-height: 1.6;
+  }
+
+  .job-textarea:focus {
+    outline: none;
+    border-color: var(--gold);
+  }
+
+  .job-textarea::placeholder { color: var(--mist); }
+
+  /* Analyze button */
+  .btn-analyze {
+    width: 100%;
+    padding: 1rem 1.5rem;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    border-radius: 3px;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-analyze::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--gold);
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    z-index: 0;
+  }
+
+  .btn-analyze:hover::after { transform: translateX(0); }
+  .btn-analyze span { position: relative; z-index: 1; }
+
+  .btn-analyze:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-analyze:disabled::after { display: none; }
+  .btn-analyze:hover:not(:disabled) { color: var(--ink); }
+
+  /* ── RESULTS AREA ── */
+  .results-area {
+    padding: 3rem 3.5rem;
+    overflow-y: auto;
+  }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    opacity: 0.4;
+  }
+
+  .empty-state .big-char {
+    font-family: 'Playfair Display', serif;
+    font-size: 8rem;
+    font-style: italic;
+    line-height: 1;
+    color: var(--gold);
+  }
+
+  .empty-state h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin: 1rem 0 0.5rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .empty-state p {
+    font-size: 0.75rem;
+    color: var(--mist);
+    max-width: 280px;
+    line-height: 1.6;
+  }
+
+  /* Loading */
+  .loading-state {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    gap: 2rem;
+  }
+
+  .loading-state.active { display: flex; }
+
+  .loading-dots {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .loading-dots span {
+    width: 10px;
+    height: 10px;
+    background: var(--gold);
+    border-radius: 50%;
+    animation: bounce 1.2s ease infinite;
+  }
+
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); opacity: 0.4; }
+    50% { transform: translateY(-12px); opacity: 1; }
+  }
+
+  .loading-state h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    font-style: italic;
+  }
+
+  .loading-state p {
+    font-size: 0.72rem;
+    color: var(--mist);
+  }
+
+  .loading-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 14, 12, 0.7);
+    backdrop-filter: blur(2px);
+    z-index: 1002;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .loading-overlay.active {
+    display: flex;
+  }
+
+  .loading-panel {
+    background: rgba(253, 250, 245, 0.98);
+    border: 1px solid rgba(68, 114, 196, 0.15);
+    border-radius: 18px;
+    padding: 2rem 2.5rem;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+  }
+
+  .loading-spinner {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 1rem;
+    border: 6px solid rgba(201, 168, 76, 0.25);
+    border-top-color: var(--ink);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .loading-panel h3 {
+    font-size: 1.4rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .loading-panel p {
+    color: var(--ink);
+    opacity: 0.85;
+    line-height: 1.6;
+  }
+
+  /* Results header */
+  .results-header {
+    display: none;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 2.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .results-header.active { display: flex; }
+
+  .results-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    font-weight: 900;
+  }
+
+  .results-meta {
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--mist);
+  }
+
+  /* CV Cards */
+  .cv-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .cv-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    animation: cardIn 0.4s ease both;
+    transition: box-shadow 0.2s;
+  }
+
+  .cv-card:hover {
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .cv-card:nth-child(1) { animation-delay: 0.05s; }
+  .cv-card:nth-child(2) { animation-delay: 0.1s; }
+  .cv-card:nth-child(3) { animation-delay: 0.15s; }
+  .cv-card:nth-child(4) { animation-delay: 0.2s; }
+
+  /* Card header */
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    background: var(--paper);
+  }
+
+  .rank-badge {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem;
+    font-weight: 900;
+    flex-shrink: 0;
+  }
+
+  .rank-1 { background: var(--gold); color: var(--ink); }
+  .rank-2 { background: var(--ink); color: var(--paper); }
+  .rank-3 { background: var(--rust); color: var(--white); }
+  .rank-other { background: var(--cream); color: var(--mist); border: 1px solid var(--border); }
+
+  .card-info { flex: 1; }
+
+  .candidate-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin-bottom: 0.2rem;
+  }
+
+  .candidate-meta {
+    font-size: 0.65rem;
+    color: var(--mist);
+    letter-spacing: 0.08em;
+  }
+
+  .scores-row {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+  }
+
+  .score-pill {
+    text-align: center;
+  }
+
+  .score-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .score-num.gold { color: var(--gold); }
+  .score-num.forest { color: var(--forest); }
+
+  .score-label {
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--mist);
+  }
+
+  .chevron {
+    font-size: 1.2rem;
+    color: var(--mist);
+    transition: transform 0.3s;
+    flex-shrink: 0;
+  }
+
+  .card-header.open .chevron { transform: rotate(180deg); }
+
+  /* Card body */
+  .card-body {
+    display: none;
+    padding: 2rem;
+    gap: 2rem;
+    flex-direction: column;
+  }
+
+  .card-body.open { display: flex; }
+
+  .card-section-title {
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+  }
+
+  /* Summary */
+  .summary-text {
+    font-size: 0.8rem;
+    line-height: 1.7;
+    color: var(--ink);
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    border-left: 3px solid var(--gold);
+    padding-left: 1rem;
+  }
+
+  /* Skills grid */
+  .skills-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .skills-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .skill-tag {
+    padding: 0.3rem 0.7rem;
+    border-radius: 2px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+  }
+
+  .skill-tag.tech { background: var(--ink); color: var(--paper); }
+  .skill-tag.soft { background: var(--cream); color: var(--ink); border: 1px solid var(--border); }
+  .skill-tag.lang { background: var(--forest); color: var(--white); }
+  .skill-tag.missing { background: var(--rust); color: var(--white); }
+
+  /* Score bars */
+  .score-bars { display: flex; flex-direction: column; gap: 0.75rem; }
+
+  .score-bar-item { display: flex; flex-direction: column; gap: 0.3rem; }
+
+  .score-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--mist);
+  }
+
+  .score-bar-track {
+    height: 4px;
+    background: var(--cream);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    background: var(--gold);
+    border-radius: 2px;
+    transition: width 0.8s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  /* Two col layout inside card */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+
+  /* Lists */
+  .detail-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .detail-list li {
+    font-size: 0.72rem;
+    list-style: none;
+    padding-left: 1rem;
+    position: relative;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  .detail-list li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--gold);
+    font-size: 0.6rem;
+    top: 0.15rem;
+  }
+
+  /* Experience */
+  .experience-item {
+    padding: 1rem;
+    background: var(--paper);
+    border-radius: 3px;
+    border-left: 3px solid var(--border);
+    margin-bottom: 0.75rem;
+  }
+
+  .experience-item:hover { border-left-color: var(--gold); }
+
+  .exp-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+
+  .exp-meta {
+    font-size: 0.65rem;
+    color: var(--mist);
+    margin: 0.2rem 0 0.5rem;
+  }
+
+  .exp-highlight {
+    font-size: 0.68rem;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+
+  /* Match badge */
+  .match-banner {
+    padding: 1rem 1.5rem;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 0.75rem;
+  }
+
+  .match-banner.high { background: #e8f5e9; border: 1px solid #a5d6a7; color: var(--forest); }
+  .match-banner.mid { background: #fff8e1; border: 1px solid #ffe082; color: #7a5c00; }
+  .match-banner.low { background: #fce4ec; border: 1px solid #f48fb1; color: var(--rust); }
+
+  .match-banner .match-score-big {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    font-weight: 900;
+    flex-shrink: 0;
+  }
+
+  /* Errors */
+  .error-list {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .error-item {
+    padding: 0.75rem 1rem;
+    background: #fce4ec;
+    border: 1px solid #f48fb1;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    color: var(--rust);
+  }
+
+  /* Vacante card */
+  .vacante-card {
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--paper);
+    font-size: 0.72rem;
+  }
+
+  .vacante-card:hover { border-color: var(--gold); background: var(--cream); }
+  .vacante-card.selected { border-color: var(--gold); background: var(--cream); box-shadow: 2px 2px 0 var(--gold); }
+
+  .vacante-card .v-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.78rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .vacante-card .v-meta {
+    font-size: 0.62rem;
+    color: var(--mist);
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .v-badge {
+    padding: 0.1rem 0.4rem;
+    border-radius: 2px;
+    font-size: 0.58rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .v-badge.comercial { background: #e3f2fd; color: #1565c0; }
+  .v-badge.calidad { background: #e8f5e9; color: #2e7d32; }
+  .v-badge.logistica { background: #fff8e1; color: #f57f17; }
+  .v-badge.produccion { background: #fce4ec; color: #880e4f; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--cream); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--mist); }
+
+  /* Modal styles */
+  .modal {
+      display: none; /* Hidden by default */
+      position: fixed; /* Stay in place */
+      z-index: 1001; /* Sit on top */
+      left: 0;
+      top: 0;
+      width: 100%; /* Full width */
+      height: 100%; /* Full height */
+      overflow: auto; /* Enable scroll if needed */
+      background-color: rgba(0,0,0,0.6); /* Black w/ opacity */
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+  }
+
+  .modal-content {
+      background-color: var(--paper);
+      margin: auto;
+      padding: 20px;
+      border: 1px solid var(--ink);
+      width: 90%;
+      max-width: 800px;
+      border-radius: 5px;
+      position: relative;
+      box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+      animation-name: animatemodal;
+      animation-duration: 0.4s;
+      max-height: 90vh; /* Limit height to allow scrolling */
+      overflow-y: auto; /* Enable scrolling within modal content */
+  }
+
+  @keyframes animatemodal {
+      from {top: -300px; opacity: 0}
+      to {top: 0; opacity: 1}
+  }
+
+  .close-button {
+      color: var(--ink);
+      position: absolute;
+      top: 10px;
+      right: 20px;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+  }
+
+  .close-button:hover,
+  .close-button:focus {
+      color: var(--rust);
+      text-decoration: none;
+      cursor: pointer;
+  }
+
+  /* Adjustments for cv-card inside modal */
+  .modal-content .cv-card { box-shadow: none; border: none; }
+  .modal-content .cv-card:hover { box-shadow: none; }
+  .modal-content .card-header { background: var(--cream); }
+
+  /* Dashboard styles */
+  .dashboard-modal {
+    display: none;
+    position: fixed;
+    z-index: 1001;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.8);
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+  }
+
+  .dashboard-content {
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    border-radius: 4px;
+    width: 95%;
+    max-width: 1200px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .dashboard-header {
+    padding: 2rem;
+    border-bottom: 2px solid var(--ink);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .dashboard-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.5rem;
+    font-weight: 900;
+    margin: 0;
+  }
+
+  .dashboard-close {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    cursor: pointer;
+    color: var(--ink);
+    padding: 0.5rem;
+    border-radius: 2px;
+    transition: background 0.2s ease;
+  }
+
+  .dashboard-close:hover {
+    background: var(--cream);
+  }
+
+  .dashboard-body {
+    padding: 2rem;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+  }
+
+  .metric-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1.5rem;
+    text-align: center;
+  }
+
+  .metric-value {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 0.5rem;
+  }
+
+  .metric-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--mist);
+  }
+
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 3rem;
+  }
+
+  .chart-container {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1.5rem;
+  }
+
+  .chart-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    text-align: center;
+  }
+
+  .recent-analyses {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1.5rem;
+  }
+
+  .recent-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+  }
+
+  .recent-list {
+    max-height: 300px;
+    overflow-y: auto;
+  }
+
+  .recent-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--cream);
+  }
+
+  .recent-item:last-child {
+    border-bottom: none;
+  }
+
+  .recent-info h4 {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.9rem;
+    margin: 0 0 0.25rem 0;
+  }
+
+  .recent-info p {
+    font-size: 0.7rem;
+    color: var(--mist);
+    margin: 0;
+  }
+
+  .recent-score {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--gold);
+  }
+
+  @media (max-width: 768px) {
+    .charts-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .dashboard-content {
+      width: 100%;
+      margin: 10px;
+    }
+  }
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .sidebar { position: relative; height: auto; }
+    header { padding: 0 1.5rem; }
+    .results-area { padding: 2rem 1.5rem; }
+    .two-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <div class="logo">CVs<span></span></div>
+    <div class="tagline">Análisis inteligente de candidatos AI</div>
+  </div>
+  <div class="header-right">
+    <div class="header-stat">
+      <div class="num" id="stat-analyzed">0</div>
+      <div class="label">Analizados</div>
+    </div>
+    <div class="header-stat">
+      <div class="num" id="stat-session">0</div>
+      <div class="label">Esta sesión</div>
+    </div>
+    <button class="dashboard-btn" onclick="showDashboard()">Dashboard</button>
+  </div>
+</header>
+
+<div class="main-grid">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div>
+      <div class="section-label">01 — Subir CVs</div>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" multiple accept=".pdf,.txt" />
+        <span class="drop-icon">📄</span>
+        <h3>Arrastra o haz clic aquí</h3>
+        <p>PDF o TXT · Hasta 10 archivos simultáneos</p>
+      </div>
+    </div>
+
+    <div id="fileListContainer" style="display:none">
+      <div class="section-label">Archivos seleccionados</div>
+      <div class="file-list" id="fileList"></div>
+    </div>
+
+    <div>
+      <div class="section-label">02 — Vacante de Salsas Aderezos</div>
+      <div id="vacantesLoading" style="font-size:0.7rem;color:var(--mist);padding:0.5rem 0">Cargando vacantes...</div>
+      <div id="vacantesList" style="display:none;flex-direction:column;gap:0.4rem;margin-bottom:0.75rem"></div>
+    </div>
+
+    <div>
+      <div class="section-label">03 — O escribe una oferta de trabajo</div>
+      <textarea
+        class="job-textarea"
+        id="jobDescription"
+        placeholder="Pega aquí la descripción del cargo para comparar y puntuar candidatos contra los requisitos específicos del puesto..."
+      ></textarea>
+    </div> 
+    <button class="btn-analyze" id="analyzeBtn" disabled onclick="analyze()">
+      <span id="btnText">ANALIZAR CVs</span>
+    </button>
+  </aside>
+
+  <!-- RESULTS -->
+  <main class="results-area">
+    <div class="empty-state" id="emptyState">
+      <div class="big-char">✦</div>
+      <h2>Tu análisis aparecerá aquí</h2>
+      <p>Sube uno o varios CVs, añade una oferta de trabajo opcional y deja que la IA haga el trabajo.</p>
+    </div>
+
+    <div class="loading-state" id="loadingState">
+      <div class="loading-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <h3>Analizando candidatos...</h3>
+      <p id="loadingMsg">Extrayendo datos con inteligencia artificial</p>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="loading-panel">
+        <div class="loading-spinner"></div>
+        <h3 id="overlayTitle">Analizando candidatos...</h3>
+        <p id="overlayMsg">Esto puede tardar algunos segundos según el tamaño del CV.</p>
+        <p style="margin-top:1rem; font-size:0.8rem; color:var(--mist);">No cierres la pestaña mientras se procesa el análisis.</p>
+      </div>
+    </div>
+
+    <div class="results-header" id="resultsHeader">
+      <div class="results-title">Resultados</div>
+      <div class="results-meta" id="resultsMeta"></div>
+    </div>
+
+    <div class="cv-cards" id="cvCards"></div>
+    <div class="error-list" id="errorList"></div>
+  </main>
+
+  <!-- Modal para detalles del historial -->
+  <div id="detailsModal" class="modal">
+    <div class="modal-content">
+      <span class="close-button" onclick="closeDetailsModal()">&times;</span>
+      <h2>Detalles del Análisis</h2>
+      <div id="detailsModalContent">
+        <!-- Aquí se cargará el contenido del CV analizado -->
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- DASHBOARD MODAL -->
+<div id="dashboardModal" class="dashboard-modal">
+  <div class="dashboard-content">
+    <div class="dashboard-header">
+      <h1 class="dashboard-title">Dashboard de Análisis</h1>
+      <button class="dashboard-close" onclick="hideDashboard()">×</button>
+    </div>
+    
+    <div class="dashboard-body">
+      <!-- Métricas principales -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-value" id="total-analyses">0</div>
+          <div class="metric-label">Total Análisis</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="total-candidates">0</div>
+          <div class="metric-label">Candidatos Únicos</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="avg-score">0</div>
+          <div class="metric-label">Score Promedio</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" id="job-descriptions">0</div>
+          <div class="metric-label">Con Oferta Trabajo</div>
+        </div>
+      </div>
+      
+      <!-- Gráficos -->
+      <div class="charts-grid">
+        <div class="chart-container">
+          <div class="chart-title">Distribución de Scores</div>
+          <canvas id="scoreChart"></canvas>
+        </div>
+        <div class="chart-container">
+          <div class="chart-title">Análisis por Mes</div>
+          <canvas id="monthlyChart"></canvas>
+        </div>
+      </div>
+      
+      <!-- Análisis recientes -->
+      <div class="recent-analyses">
+        <div class="recent-title">Análisis Recientes</div>
+        <div class="recent-list" id="recent-list">
+          <p style="color: var(--mist); font-style: italic;">Cargando...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let selectedFiles = [];
+let sessionCount = 0;
+// Variable global para almacenar el historial y acceder a los detalles
+let analysisHistoryData = [];
+
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const fileList = document.getElementById('fileList');
+const fileListContainer = document.getElementById('fileListContainer');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const btnText = document.getElementById('btnText');
+
+// ── VACANTES ──
+let vacantes = [];
+
+async function loadVacantes() {
+  try {
+    const res = await fetch('/api/vacantes');
+    const data = await res.json();
+    vacantes = data.vacantes;
+    renderVacantes();
+  } catch (error) {
+    document.getElementById('vacantesLoading').textContent = 'No se pudieron cargar las vacantes.';
+  }
+}
+
+function renderVacantes() {
+  const loading = document.getElementById('vacantesLoading');
+  const list = document.getElementById('vacantesList');
+  loading.style.display = 'none';
+  list.style.display = 'flex';
+
+  const badgeClass = { 'Comercial': 'comercial', 'Calidad': 'calidad', 'Logística': 'logistica', 'Producción': 'produccion' };
+
+  vacantes.forEach(v => {
+    const card = document.createElement('div');
+    card.className = 'vacante-card';
+    card.dataset.id = v.id;
+    card.innerHTML = `
+      <div class="v-title">${v.titulo}</div>
+      <div class="v-meta">
+        <span class="v-badge ${badgeClass[v.area] || 'comercial'}">${v.area}</span>
+        <span>${v.contrato}</span>
+        <span>${v.fecha}</span>
+      </div>
+    `;
+    card.onclick = () => selectVacante(v, card);
+    list.appendChild(card);
+  });
+}
+
+function selectVacante(vacante, cardEl) {
+  // Toggle: si ya está seleccionada, deseleccionar
+  if (cardEl.classList.contains('selected')) {
+    cardEl.classList.remove('selected');
+    document.getElementById('jobDescription').value = '';
+    return;
+  }
+  // Deseleccionar otras
+  document.querySelectorAll('.vacante-card').forEach(c => c.classList.remove('selected'));
+  cardEl.classList.add('selected');
+  // Rellenar textarea
+  document.getElementById('jobDescription').value = vacante.descripcion;
+}
+
+// Cargar vacantes al iniciar
+loadVacantes();
+
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  addFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
+
+function addFiles(files) {
+  files.forEach(f => {
+    if (!selectedFiles.find(x => x.name === f.name)) {
+      selectedFiles.push(f);
+    }
+  });
+  renderFileList();
+}
+
+function removeFile(name) {
+  selectedFiles = selectedFiles.filter(f => f.name !== name);
+  renderFileList();
+}
+
+function renderFileList() {
+  fileList.innerHTML = '';
+  if (selectedFiles.length === 0) {
+    fileListContainer.style.display = 'none';
+    analyzeBtn.disabled = true;
+    btnText.textContent = 'Selecciona al menos un CV';
+    return;
+  }
+  fileListContainer.style.display = 'block';
+  selectedFiles.forEach(f => {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.innerHTML = `
+      <span class="file-icon">📄</span>
+      <span class="file-name" title="${f.name}">${f.name}</span>
+      <button class="file-remove" onclick="removeFile('${f.name}')" title="Eliminar">×</button>
+    `;
+    fileList.appendChild(item);
+  });
+  analyzeBtn.disabled = false;
+  btnText.textContent = `Analizar ${selectedFiles.length} CV${selectedFiles.length > 1 ? 's' : ''}`;
+}
+
+function showLoading(message) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('resultsHeader').classList.remove('active');
+  document.getElementById('cvCards').innerHTML = '';
+  document.getElementById('errorList').innerHTML = '';
+  document.getElementById('loadingState').classList.add('active');
+  document.getElementById('loadingOverlay').classList.add('active');
+  document.getElementById('overlayMsg').textContent = message;
+  btnText.textContent = 'Analizando…';
+  analyzeBtn.disabled = true;
+}
+
+function hideLoading() {
+  document.getElementById('loadingState').classList.remove('active');
+  document.getElementById('loadingOverlay').classList.remove('active');
+}
+
+async function analyze() {
+  if (!selectedFiles.length) return;
+
+  // UI: loading
+  analyzeBtn.disabled = true;
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('loadingState').classList.add('active');
+  document.getElementById('resultsHeader').classList.remove('active');
+  document.getElementById('cvCards').innerHTML = '';
+  document.getElementById('errorList').innerHTML = '';
+
+  const msgs = [
+    'Extrayendo texto de los PDFs...',
+    'Identificando habilidades y experiencia...',
+    'Puntuando candidatos con IA...',
+    'Preparando el ranking final...'
+  ];
+  let mi = 0;
+  const msgEl = document.getElementById('loadingMsg');
+  const overlayMsgEl = document.getElementById('overlayMsg');
+  const interval = setInterval(() => {
+    mi = (mi + 1) % msgs.length;
+    msgEl.textContent = msgs[mi];
+    overlayMsgEl.textContent = msgs[mi];
+  }, 2000);
+
+  try {
+    const formData = new FormData();
+    selectedFiles.forEach(f => formData.append('cvs', f));
+    const jd = document.getElementById('jobDescription').value.trim();
+    if (jd) formData.append('job_description', jd);
+
+    showLoading(msgs[mi]);
+
+    const res = await fetch('/api/analyze', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    clearInterval(interval);
+    hideLoading();
+
+    if (data.success) {
+      renderResults(data);
+      sessionCount += data.total;
+      document.getElementById('stat-analyzed').textContent = data.total;
+      document.getElementById('stat-session').textContent = sessionCount;
+    } else {
+      document.getElementById('emptyState').style.display = 'flex'; // Mostrar empty state si hay error
+      alert('Error: ' + (data.detail || 'Error desconocido'));
+    }
+  } catch (err) {
+    clearInterval(interval);
+    hideLoading();
+    document.getElementById('emptyState').style.display = 'flex';
+    alert('Error de conexión: ' + err.message);
+  }
+
+  analyzeBtn.disabled = false;
+  btnText.textContent = `Analizar ${selectedFiles.length} CV${selectedFiles.length > 1 ? 's' : ''}`;
+}
+
+function renderResults(data) {
+  const header = document.getElementById('resultsHeader');
+  header.classList.add('active');
+  document.getElementById('resultsMeta').textContent =
+    `${data.total} candidato${data.total !== 1 ? 's' : ''} · ${data.has_job_description ? 'Con oferta de trabajo' : 'Sin oferta de trabajo'}`;
+
+  const container = document.getElementById('cvCards');
+  data.results.forEach((cv, i) => {
+    container.appendChild(buildCard(cv, data.has_job_description));
+  });
+
+  // Errors
+  if (data.errors && data.errors.length) {
+    const errContainer = document.getElementById('errorList');
+    data.errors.forEach(e => {
+      const el = document.createElement('div');
+      el.className = 'error-item';
+      el.textContent = `⚠ ${e.filename}: ${e.error}`;
+      errContainer.appendChild(el);
+    });
+  }
+}
+
+function buildCard(cv, hasJob) {
+  const card = document.createElement('div');
+  card.className = 'cv-card';
+
+  const rankClass = cv.rank <= 3 ? `rank-${cv.rank}` : 'rank-other';
+  const score = cv.overall_score || 0;
+  const matchScore = cv.match_score;
+
+  // Match banner class
+  let matchClass = 'mid';
+  if (matchScore >= 75) matchClass = 'high';
+  else if (matchScore < 50) matchClass = 'low';
+
+  const matchBanner = (hasJob && matchScore !== null && matchScore !== undefined) ? `
+    <div class="match-banner ${matchClass}">
+      <div class="match-score-big">${matchScore}</div>
+      <div>
+        <strong>Match con la oferta</strong>
+        <br/>${(cv.match_reasons || []).slice(0, 2).join(' · ') || 'Sin razones disponibles'}
+      </div>
+    </div>
+  ` : '';
+
+  // Skills
+  const techSkills = (cv.skills?.technical || []).slice(0, 10).map(s => `<span class="skill-tag tech">${s}</span>`).join('');
+  const softSkills = (cv.skills?.soft || []).slice(0, 6).map(s => `<span class="skill-tag soft">${s}</span>`).join('');
+  const langSkills = (cv.skills?.languages || []).map(s => `<span class="skill-tag lang">${s}</span>`).join('');
+  const missingSkills = (cv.missing_skills || []).map(s => `<span class="skill-tag missing">${s}</span>`).join('');
+
+  // Score bars
+  const breakdown = cv.score_breakdown || {};
+  const bars = ['experience', 'education', 'skills', 'presentation'].map(key => {
+    const val = breakdown[key] || 0;
+    const labels = { experience: 'Experiencia', education: 'Educación', skills: 'Habilidades', presentation: 'Presentación' };
+    return `
+      <div class="score-bar-item">
+        <div class="score-bar-label"><span>${labels[key]}</span><span>${val}</span></div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:${val}%"></div></div>
+      </div>
+    `;
+  }).join('');
+
+  // Experience
+  const expItems = (cv.experience || []).slice(0, 3).map(e => `
+    <div class="experience-item">
+      <div class="exp-title">${e.title || 'Cargo'}</div>
+      <div class="exp-meta">${e.company || ''} · ${e.duration || ''}</div>
+      ${(e.highlights || []).slice(0, 2).map(h => `<div class="exp-highlight">· ${h}</div>`).join('')}
+    </div>
+  `).join('');
+
+  // Education
+  const eduItems = (cv.education || []).slice(0, 3).map(e => `
+    <li>${e.degree || ''} — ${e.institution || ''} ${e.year ? '(' + e.year + ')' : ''}</li>
+  `).join('');
+
+  card.innerHTML = `
+    <div class="card-header" onclick="toggleCard(this)">
+      <div class="rank-badge ${rankClass}">${cv.rank}</div>
+      <div class="card-info">
+        <div class="candidate-name">${cv.candidate_name || cv.filename}</div>
+        <div class="candidate-meta">
+          ${cv.location || ''}${cv.location && cv.years_of_experience ? ' · ' : ''}
+          ${cv.years_of_experience ? cv.years_of_experience + ' años exp.' : ''}
+          ${cv.email ? ' · ' + cv.email : ''}
+        </div>
+      </div>
+      <div class="scores-row">
+        <div class="score-pill">
+          <div class="score-num gold">${score}</div>
+          <div class="score-label">Score CV</div>
+        </div>
+        ${hasJob && matchScore !== null && matchScore !== undefined ? `
+        <div class="score-pill">
+          <div class="score-num forest">${matchScore}</div>
+          <div class="score-label">Match</div>
+        </div>` : ''}
+      </div>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="card-body">
+      ${matchBanner}
+
+      <div>
+        <div class="card-section-title">Resumen profesional</div>
+        <div class="summary-text">${cv.summary || 'Sin resumen disponible.'}</div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <div class="card-section-title">Puntuación detallada</div>
+          <div class="score-bars">${bars}</div>
+        </div>
+        <div>
+          <div class="card-section-title">Fortalezas</div>
+          <ul class="detail-list">
+            ${(cv.strengths || []).map(s => `<li>${s}</li>`).join('')}
+          </ul>
+          ${cv.areas_for_improvement?.length ? `
+          <div class="card-section-title" style="margin-top:1rem">Áreas de mejora</div>
+          <ul class="detail-list">
+            ${cv.areas_for_improvement.map(s => `<li>${s}</li>`).join('')}
+          </ul>` : ''}
+        </div>
+      </div>
+
+      <div>
+        <div class="card-section-title">Habilidades</div>
+        <div class="skills-group">
+          ${techSkills ? `<div class="skills-row">${techSkills}</div>` : ''}
+          ${softSkills ? `<div class="skills-row">${softSkills}</div>` : ''}
+          ${langSkills ? `<div class="skills-row">${langSkills}</div>` : ''}
+          ${missingSkills ? `<div style="margin-top:0.5rem"><div class="card-section-title" style="color:var(--rust)">Skills faltantes para la oferta</div><div class="skills-row">${missingSkills}</div></div>` : ''}
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <div class="card-section-title">Experiencia</div>
+          ${expItems || '<p style="font-size:0.72rem;color:var(--mist)">No disponible</p>'}
+        </div>
+        <div>
+          <div class="card-section-title">Educación</div>
+          <ul class="detail-list">${eduItems || '<li>No disponible</li>'}</ul>
+        </div>
+      </div>
+    </div>
+  `;
+
+  return card;
+}
+
+function toggleCard(header) {
+  header.classList.toggle('open');
+  const body = header.nextElementSibling;
+  body.classList.toggle('open');
+
+  // Animate score bars when opened
+  if (body.classList.contains('open')) {
+    setTimeout(() => {
+      body.querySelectorAll('.score-bar-fill').forEach(bar => {
+        const w = bar.style.width;
+        bar.style.width = '0%';
+        setTimeout(() => bar.style.width = w, 50);
+      });
+    }, 50);
+  }
+}
+
+// --- Funcionalidad del Historial ---
+document.addEventListener('DOMContentLoaded', () => {
+    // ... (código existente que se ejecuta al cargar la página) ...
+    // loadAnalysisHistory(); // Removido temporalmente - elementos HTML no existen
+});
+
+async function loadAnalysisHistory() {
+    const historySection = document.getElementById('history-section');
+    const historyTableBody = document.getElementById('history-table-body');
+
+    // Verificar que los elementos existen antes de continuar
+    if (!historySection || !historyTableBody) {
+        console.warn('Elementos del historial no encontrados en el DOM');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/history');
+        if (!response.ok) {
+            console.error('Error al cargar el historial.');
+            historySection.style.display = 'none';
+            return;
+        }
+
+        const data = await response.json();
+        analysisHistoryData = data.history; // Almacenar el historial completo
+
+        if (analysisHistoryData && analysisHistoryData.length > 0) {
+            historyTableBody.innerHTML = ''; // Limpiar contenido previo
+            analysisHistoryData.forEach(entry => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${new Date(entry.timestamp).toLocaleString()}</td>
+                    <td>${entry.candidate_name || 'N/A'}</td>
+                    <td>${entry.filename}</td>
+                    <td>${entry.overall_score || '-'}</td>
+                    <td>${entry.match_score || '-'}</td>
+                    <td><button class="view-details-btn" data-id="${entry.id}">Ver Detalles</button></td>
+                `;
+                historyTableBody.appendChild(row);
+            });
+            historySection.style.display = 'block'; // Mostrar la sección de historial
+
+            // Adjuntar event listeners a los botones "Ver Detalles"
+            document.querySelectorAll('.view-details-btn').forEach(button => {
+                button.addEventListener('click', (event) => {
+                    const entryId = parseInt(event.target.dataset.id);
+                    const entry = analysisHistoryData.find(e => e.id === entryId);
+                    if (entry && entry.full_result) {
+                        openDetailsModal(entry); // Pasar el objeto de entrada completo
+                    }
+                });
+            });
+
+        } else {
+            historySection.style.display = 'none'; // Ocultar si no hay historial
+        }
+    } catch (error) {
+        console.error('Error en la petición del historial:', error);
+        historySection.style.display = 'none';
+    }
+}
+
+// --- Funciones del Modal ---
+function openDetailsModal(historyEntry) {
+    const modal = document.getElementById('detailsModal');
+    const modalContent = document.getElementById('detailsModalContent');
+    const fullResult = historyEntry.full_result; // El objeto de análisis real
+    const hasJob = historyEntry.job_description_used;
+    
+    // Limpiar contenido previo
+    modalContent.innerHTML = '';
+
+    // Reutilizar la función buildCard para renderizar el contenido detallado
+    const detailCard = buildCard(fullResult, hasJob);
+    
+    // Modificar el card para que se vea bien dentro del modal (sin toggle, siempre abierto)
+    const header = detailCard.querySelector('.card-header');
+    if (header) {
+        header.onclick = null; // Desactivar el toggle
+        header.style.cursor = 'default';
+        const chevron = header.querySelector('.chevron');
+        if (chevron) chevron.style.display = 'none'; // Ocultar el chevron
+        const body = header.nextElementSibling;
+        if (body) body.classList.add('open'); // Asegurar que el cuerpo esté abierto
+    }
+
+    modalContent.appendChild(detailCard);
+    modal.style.display = 'flex'; // Mostrar modal
+    
+    // Activar la animación de las barras de puntuación
+    setTimeout(() => {
+        modalContent.querySelectorAll('.score-bar-fill').forEach(bar => {
+            const w = bar.style.width;
+            bar.style.width = '0%';
+            setTimeout(() => bar.style.width = w, 50);
+        });
+    }, 100);
+}
+
+function closeDetailsModal() {
+    document.getElementById('detailsModal').style.display = 'none';
+}
+
+// ── DASHBOARD ──
+let scoreChart = null;
+let monthlyChart = null;
+
+function showDashboard() {
+    document.getElementById('dashboardModal').style.display = 'flex';
+    loadDashboardData();
+}
+
+function hideDashboard() {
+    document.getElementById('dashboardModal').style.display = 'none';
+}
+
+async function loadDashboardData() {
+    try {
+        const response = await fetch('/api/dashboard');
+        const data = await response.json();
+        
+        // Actualizar métricas
+        document.getElementById('total-analyses').textContent = data.total_analyses;
+        document.getElementById('total-candidates').textContent = data.total_candidates;
+        document.getElementById('avg-score').textContent = data.avg_score;
+        document.getElementById('job-descriptions').textContent = data.job_descriptions_used;
+        
+        // Gráfico de distribución de scores
+        createScoreChart(data.score_distribution);
+        
+        // Gráfico mensual
+        createMonthlyChart(data.analyses_by_month);
+        
+        // Análisis recientes
+        renderRecentAnalyses(data.recent_analyses);
+        
+    } catch (error) {
+        console.error('Error cargando dashboard:', error);
+        alert('Error al cargar los datos del dashboard');
+    }
+}
+
+function createScoreChart(scoreDistribution) {
+    const ctx = document.getElementById('scoreChart').getContext('2d');
+    
+    if (scoreChart) {
+        scoreChart.destroy();
+    }
+    
+    const labels = Object.keys(scoreDistribution);
+    const values = Object.values(scoreDistribution);
+    
+    scoreChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: values,
+                backgroundColor: [
+                    '#c9a84c', // gold
+                    '#b84c2a', // rust
+                    '#2a4a35', // forest
+                    '#8a9ba8', // mist
+                    '#4472c4'  // blue
+                ],
+                borderWidth: 2,
+                borderColor: '#f5f0e8'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        font: {
+                            family: 'DM Mono',
+                            size: 12
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function createMonthlyChart(monthlyData) {
+    const ctx = document.getElementById('monthlyChart').getContext('2d');
+    
+    if (monthlyChart) {
+        monthlyChart.destroy();
+    }
+    
+    const labels = monthlyData.map(item => item.month);
+    const values = monthlyData.map(item => item.count);
+    
+    monthlyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Análisis',
+                data: values,
+                borderColor: '#c9a84c',
+                backgroundColor: 'rgba(201, 168, 76, 0.1)',
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderRecentAnalyses(recentAnalyses) {
+    const container = document.getElementById('recent-list');
+    
+    if (recentAnalyses.length === 0) {
+        container.innerHTML = '<p style="color: var(--mist); font-style: italic;">No hay análisis recientes</p>';
+        return;
+    }
+    
+    container.innerHTML = recentAnalyses.map(analysis => `
+        <div class="recent-item">
+            <div class="recent-info">
+                <h4>${analysis.candidate_name || 'Sin nombre'}</h4>
+                <p>${new Date(analysis.timestamp).toLocaleDateString('es-ES')} · ${analysis.filename}</p>
+            </div>
+            <div class="recent-score">${analysis.overall_score || 'N/A'}</div>
+        </div>
+    `).join('');
+}
+
+// Cerrar modal al hacer clic fuera
+document.getElementById('dashboardModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        hideDashboard();
+    }
+});
+</script>
+</body>
+</html>

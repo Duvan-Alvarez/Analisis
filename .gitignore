@@ -1,0 +1,13 @@
+.env
+.venv/
+.venv-1/
+venv/
+__pycache__/
+*.py[cod]
+
+cv_analysis_history.db
+uploads/*
+!uploads/.gitkeep
+
+.vscode/
+.DS_Store
