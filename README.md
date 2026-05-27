@@ -249,6 +249,35 @@ Analiza CVs forzando el uso de OCR para todos los PDFs (útil para CVs escaneado
 | `DATA_DIR` | Directorio para datos persistentes en Railway, por ejemplo `/data` |
 | `UPLOAD_DIR` | Directorio para uploads temporales, por ejemplo `/data/uploads` |
 | `DATABASE_URL` | URL de base de datos. Si no se define, usa SQLite en `DATA_DIR` |
+| `VACANTES_DATABASE_URL` | URL MySQL/MariaDB para traer vacantes desde la BD administrada en phpMyAdmin |
+| `VACANTES_QUERY` | Consulta SQL que debe retornar `id`, `titulo`, `area`, `contrato`, `fecha`, `descripcion` |
+
+### Vacantes desde phpMyAdmin
+
+Configura una conexión MySQL/MariaDB separada para las vacantes:
+
+```bash
+VACANTES_DATABASE_URL=mysql+pymysql://usuario:password@host:3306/base_de_datos?charset=utf8mb4
+VACANTES_QUERY=SELECT id, titulo, area, contrato, fecha, descripcion FROM vacantes ORDER BY fecha DESC LIMIT 50
+```
+
+Si tu tabla usa otros nombres de columnas, usa alias en la consulta:
+
+```sql
+SELECT
+  id_vacante AS id,
+  cargo AS titulo,
+  departamento AS area,
+  tipo_contrato AS contrato,
+  fecha_publicacion AS fecha,
+  descripcion AS descripcion
+FROM mi_tabla_vacantes
+WHERE estado = 'activa'
+ORDER BY fecha_publicacion DESC
+LIMIT 50
+```
+
+Si `VACANTES_DATABASE_URL` no se define, la app sigue usando las vacantes de ejemplo incluidas en el código.
 
 ---
 

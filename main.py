@@ -4,10 +4,10 @@ import io
 import json
 from pathlib import Path
 from typing import Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, date
 
 import pdfplumber
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import google.generativeai as genai
@@ -281,10 +281,85 @@ VACANTES = [
     }
 ]
 
+VACANTES_DATABASE_URL = os.getenv("VACANTES_DATABASE_URL")
+VACANTES_QUERY = os.getenv(
+    "VACANTES_QUERY",
+    """
+    SELECT
+        id,
+        titulo,
+        area,
+        contrato,
+        fecha,
+        descripcion
+    FROM vacantes
+    ORDER BY fecha DESC
+    LIMIT 50
+    """
+)
+
+vacantes_engine = create_engine(
+    VACANTES_DATABASE_URL,
+    pool_pre_ping=True,
+) if VACANTES_DATABASE_URL else None
+
+
+def format_db_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, (datetime, date)):
+        return value.strftime("%d/%m/%Y")
+    return str(value)
+
+
+def normalize_vacante(row: dict) -> dict:
+    """Normaliza nombres de columnas comunes de la BD al formato que usa el frontend."""
+    titulo = row.get("titulo") or row.get("title") or row.get("nombre") or row.get("cargo")
+    area = row.get("area") or row.get("departamento") or row.get("categoria")
+    contrato = row.get("contrato") or row.get("tipo_contrato") or row.get("contract_type")
+    fecha = row.get("fecha") or row.get("created_at") or row.get("fecha_publicacion")
+    descripcion = row.get("descripcion") or row.get("description") or row.get("detalle")
+
+    if not descripcion:
+        partes = [
+            f"Cargo: {format_db_value(titulo)}" if titulo else "",
+            f"Area: {format_db_value(area)}" if area else "",
+            f"Contrato: {format_db_value(contrato)}" if contrato else "",
+            format_db_value(row.get("funciones") or row.get("responsabilidades")),
+            format_db_value(row.get("requisitos") or row.get("requirements")),
+        ]
+        descripcion = "\n".join(parte for parte in partes if parte)
+
+    return {
+        "id": row.get("id") or row.get("vacante_id"),
+        "titulo": format_db_value(titulo or "Vacante sin titulo"),
+        "area": format_db_value(area or "General"),
+        "contrato": format_db_value(contrato or "No especificado"),
+        "fecha": format_db_value(fecha),
+        "descripcion": format_db_value(descripcion),
+    }
+
+
+def load_vacantes_from_database() -> List[dict]:
+    if not vacantes_engine:
+        return VACANTES
+
+    with vacantes_engine.connect() as conn:
+        rows = conn.execute(text(VACANTES_QUERY)).mappings().all()
+
+    return [normalize_vacante(dict(row)) for row in rows]
+
 
 @app.get("/api/vacantes")
 async def get_vacantes():
-    return JSONResponse({"vacantes": VACANTES})
+    try:
+        vacantes = await asyncio.to_thread(load_vacantes_from_database)
+        return JSONResponse({"vacantes": vacantes})
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"No se pudieron cargar las vacantes desde la base de datos: {e}"
+        )
 
 
 @app.get("/api/health")
