@@ -1001,15 +1001,19 @@
   }
 
   .recent-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     padding: 0.75rem 0;
     border-bottom: 1px solid var(--cream);
   }
 
   .recent-item:last-child {
     border-bottom: none;
+  }
+
+  .recent-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
   }
 
   .recent-info h4 {
@@ -1024,11 +1028,59 @@
     margin: 0;
   }
 
-  .recent-score {
+  .recent-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .recent-match {
     font-family: 'Playfair Display', serif;
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--gold);
+    color: var(--forest);
+    text-align: right;
+  }
+
+  .recent-match-label {
+    font-size: 0.55rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--mist);
+    text-align: right;
+  }
+
+  .summary-toggle {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 2px;
+    padding: 0.45rem 0.7rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .summary-toggle:hover {
+    background: var(--gold);
+    color: var(--ink);
+  }
+
+  .recent-summary {
+    display: none;
+    margin-top: 0.75rem;
+    padding: 0.85rem 1rem;
+    background: var(--paper);
+    border-left: 3px solid var(--gold);
+    font-size: 0.72rem;
+    line-height: 1.6;
+  }
+
+  .recent-summary.open {
+    display: block;
   }
 
   @media (max-width: 768px) {
@@ -1175,8 +1227,8 @@
           <div class="metric-label">Candidatos Únicos</div>
         </div>
         <div class="metric-card">
-          <div class="metric-value" id="avg-score">0</div>
-          <div class="metric-label">Score Promedio</div>
+          <div class="metric-value" id="avg-match">0</div>
+          <div class="metric-label">Match Promedio</div>
         </div>
         <div class="metric-card">
           <div class="metric-value" id="job-descriptions">0</div>
@@ -1187,7 +1239,7 @@
       <!-- Gráficos -->
       <div class="charts-grid">
         <div class="chart-container">
-          <div class="chart-title">Distribución de Scores</div>
+          <div class="chart-title">Distribución de Match</div>
           <canvas id="scoreChart"></canvas>
         </div>
         <div class="chart-container">
@@ -1697,11 +1749,11 @@ async function loadDashboardData() {
         // Actualizar métricas
         document.getElementById('total-analyses').textContent = data.total_analyses;
         document.getElementById('total-candidates').textContent = data.total_candidates;
-        document.getElementById('avg-score').textContent = data.avg_score;
+        document.getElementById('avg-match').textContent = data.avg_match;
         document.getElementById('job-descriptions').textContent = data.job_descriptions_used;
         
         // Gráfico de distribución de scores
-        createScoreChart(data.score_distribution);
+        createScoreChart(data.match_distribution);
         
         // Gráfico mensual
         createMonthlyChart(data.analyses_by_month);
@@ -1802,7 +1854,7 @@ function createMonthlyChart(monthlyData) {
     });
 }
 
-function renderRecentAnalyses(recentAnalyses) {
+function renderRecentAnalysesLegacy(recentAnalyses) {
     const container = document.getElementById('recent-list');
     
     if (recentAnalyses.length === 0) {
@@ -1819,6 +1871,56 @@ function renderRecentAnalyses(recentAnalyses) {
             <div class="recent-score">${analysis.overall_score || 'N/A'}</div>
         </div>
     `).join('');
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function renderRecentAnalyses(recentAnalyses) {
+    const container = document.getElementById('recent-list');
+    
+    if (recentAnalyses.length === 0) {
+        container.innerHTML = '<p style="color: var(--mist); font-style: italic;">No hay análisis recientes</p>';
+        return;
+    }
+    
+    container.innerHTML = recentAnalyses.map(analysis => {
+        const hasMatch = analysis.job_description_used && analysis.match_score !== null && analysis.match_score !== undefined;
+        const matchText = hasMatch ? analysis.match_score : 'Sin oferta';
+        const summary = escapeHtml(analysis.summary || 'Sin resumen disponible.');
+        const reasons = (analysis.match_reasons || []).slice(0, 2).map(escapeHtml).join(' · ');
+        const detail = reasons ? `${summary}<br><strong>Match:</strong> ${reasons}` : summary;
+
+        return `
+        <div class="recent-item">
+            <div class="recent-row">
+                <div class="recent-info">
+                    <h4>${escapeHtml(analysis.candidate_name || 'Sin nombre')}</h4>
+                    <p>${new Date(analysis.timestamp).toLocaleDateString('es-ES')} · ${escapeHtml(analysis.filename)}</p>
+                </div>
+                <div class="recent-actions">
+                    <button class="summary-toggle" onclick="toggleDashboardSummary(this)">Resumen</button>
+                    <div>
+                        <div class="recent-match">${matchText}</div>
+                        <div class="recent-match-label">Match</div>
+                    </div>
+                </div>
+            </div>
+            <div class="recent-summary">${detail}</div>
+        </div>
+    `}).join('');
+}
+
+function toggleDashboardSummary(button) {
+    const summary = button.closest('.recent-item').querySelector('.recent-summary');
+    summary.classList.toggle('open');
+    button.textContent = summary.classList.contains('open') ? 'Ocultar' : 'Resumen';
 }
 
 // Cerrar modal al hacer clic fuera

@@ -517,8 +517,8 @@ async def get_dashboard_metrics(db: Session = Depends(get_db)):
             return JSONResponse({
                 "total_analyses": 0,
                 "total_candidates": 0,
-                "avg_score": 0,
-                "score_distribution": {},
+                "avg_match": 0,
+                "match_distribution": {},
                 "recent_analyses": [],
                 "top_skills": [],
                 "analyses_by_month": [],
@@ -529,33 +529,48 @@ async def get_dashboard_metrics(db: Session = Depends(get_db)):
         total_analyses = len(all_entries)
         total_candidates = len(set(entry.candidate_name for entry in all_entries if entry.candidate_name != "N/A"))
         
-        scores = [entry.overall_score for entry in all_entries if entry.overall_score is not None]
-        avg_score = sum(scores) / len(scores) if scores else 0
+        matches = [
+            entry.match_score
+            for entry in all_entries
+            if entry.job_description_used and entry.match_score is not None
+        ]
+        avg_match = sum(matches) / len(matches) if matches else 0
         
         # Distribución de scores
-        score_ranges = {"0-20": 0, "21-40": 0, "41-60": 0, "61-80": 0, "81-100": 0}
-        for score in scores:
-            if score <= 20:
-                score_ranges["0-20"] += 1
-            elif score <= 40:
-                score_ranges["21-40"] += 1
-            elif score <= 60:
-                score_ranges["41-60"] += 1
-            elif score <= 80:
-                score_ranges["61-80"] += 1
+        match_ranges = {"0-20": 0, "21-40": 0, "41-60": 0, "61-80": 0, "81-100": 0}
+        for match in matches:
+            if match <= 20:
+                match_ranges["0-20"] += 1
+            elif match <= 40:
+                match_ranges["21-40"] += 1
+            elif match <= 60:
+                match_ranges["41-60"] += 1
+            elif match <= 80:
+                match_ranges["61-80"] += 1
             else:
-                score_ranges["81-100"] += 1
+                match_ranges["81-100"] += 1
         
         # Análisis recientes (últimos 10)
         recent_analyses = []
         for entry in all_entries[-10:]:
+            summary = None
+            match_reasons = []
+            try:
+                full_data = json.loads(entry.full_result_json)
+                summary = full_data.get("summary")
+                match_reasons = full_data.get("match_reasons", [])
+            except Exception:
+                pass
+
             recent_analyses.append({
                 "id": entry.id,
                 "timestamp": entry.timestamp.isoformat(),
                 "filename": entry.filename,
                 "candidate_name": entry.candidate_name,
-                "overall_score": entry.overall_score,
-                "match_score": entry.match_score
+                "match_score": entry.match_score,
+                "job_description_used": entry.job_description_used,
+                "summary": summary,
+                "match_reasons": match_reasons
             })
         
         # Top skills (extraer de los JSON completos)
@@ -589,8 +604,8 @@ async def get_dashboard_metrics(db: Session = Depends(get_db)):
         return JSONResponse({
             "total_analyses": total_analyses,
             "total_candidates": total_candidates,
-            "avg_score": round(avg_score, 1),
-            "score_distribution": score_ranges,
+            "avg_match": round(avg_match, 1),
+            "match_distribution": match_ranges,
             "recent_analyses": recent_analyses,
             "top_skills": [{"skill": skill, "count": count} for skill, count in top_skills],
             "analyses_by_month": monthly_data,
