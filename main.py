@@ -42,6 +42,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+Path("static").mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "."))
