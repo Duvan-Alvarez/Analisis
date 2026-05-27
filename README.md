@@ -84,23 +84,51 @@ uvicorn main:app --reload --port 8000
 
 Visita: **http://localhost:8000**
 
-### 7. Despliegue en Azure App Service
+### 7. Despliegue en Railway
 
-1. Crea un App Service en Linux con Python 3.x.
-2. En la sección **Configuration > General settings**, selecciona la versión de Python y aplica.
-3. En **Configuration > Application settings**, agrega:
-
-   - `GOOGLE_API_KEY` = tu_api_key_de_Google_Gemini
-
-4. En **Configuration > General settings** o en el portal de Azure, establece el comando de inicio en:
+El repositorio ya incluye `railway.json` con el comando de inicio:
 
 ```bash
-bash startup.sh
+python -m uvicorn main:app --host 0.0.0.0 --port $PORT
 ```
 
-5. Despliega el repositorio. Azure instalará `requirements.txt` automáticamente.
+Pasos:
 
-> No olvides usar App Settings de Azure para la clave `GOOGLE_API_KEY` en lugar de subir `.env` al repositorio.
+1. Sube el proyecto a GitHub.
+2. En Railway, crea un **New Project** y selecciona **Deploy from GitHub repo**.
+3. En el servicio desplegado, ve a **Variables** y agrega:
+
+   - `GOOGLE_API_KEY` = tu API key de Google Gemini
+   - `SECRET_KEY` = una clave larga y aleatoria para JWT
+   - `GEMINI_MODEL` = `gemini-flash-latest` (opcional)
+
+4. Genera el dominio publico desde **Settings > Networking > Public Networking > Generate Domain**.
+
+Persistencia de datos:
+
+- Por defecto se usa SQLite en `cv_analysis_history.db`. En Railway ese archivo puede perderse al redeplegar si no hay volumen.
+- Para usar un volumen, crea un Railway Volume montado en `/data` y agrega:
+
+```bash
+DATA_DIR=/data
+```
+
+- Si agregas una base PostgreSQL de Railway, copia su URL en:
+
+```bash
+DATABASE_URL=postgresql://...
+```
+
+OCR en Railway:
+
+- La dependencia Python `pytesseract` ya esta instalada, pero el binario del sistema no viene por defecto.
+- Si necesitas OCR para PDFs escaneados, agrega esta variable en Railway:
+
+```bash
+RAILPACK_DEPLOY_APT_PACKAGES=tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng
+```
+
+No subas `.env`, entornos virtuales, la base local ni archivos de `uploads`; `.railwayignore` ya los excluye.
 
 ---
 
@@ -217,7 +245,10 @@ Analiza CVs forzando el uso de OCR para todos los PDFs (útil para CVs escaneado
 |----------|-------------|
 | `GOOGLE_API_KEY` | API key de Google Gemini |
 | `SECRET_KEY` | Clave secreta para JWT (cambiar en producción) |
-| `GEMINI_MODEL` | Modelo de Gemini a usar (default: `gemini-2.5-flash`) |
+| `GEMINI_MODEL` | Modelo de Gemini a usar (default: `gemini-flash-latest`) |
+| `DATA_DIR` | Directorio para datos persistentes en Railway, por ejemplo `/data` |
+| `UPLOAD_DIR` | Directorio para uploads temporales, por ejemplo `/data/uploads` |
+| `DATABASE_URL` | URL de base de datos. Si no se define, usa SQLite en `DATA_DIR` |
 
 ---
 

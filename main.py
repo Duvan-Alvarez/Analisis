@@ -44,8 +44,11 @@ app.add_middleware(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+DATA_DIR = Path(os.getenv("DATA_DIR", "."))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", DATA_DIR / "uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Modelo Gemini configurado desde env o por defecto.
 # gemini-flash-latest funciona en este entorno y es una opción estable.
@@ -56,11 +59,12 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
 MAX_CONCURRENT_ANALYSES = 3
 analysis_semaphore = asyncio.Semaphore(MAX_CONCURRENT_ANALYSES)
 
-# --- Configuración de la Base de Datos SQLite ---
-DATABASE_URL = "sqlite:///./cv_analysis_history.db"
+# --- Configuración de la Base de Datos ---
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DATA_DIR / 'cv_analysis_history.db'}")
+SQLALCHEMY_CONNECT_ARGS = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 
 engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}
+    DATABASE_URL, connect_args=SQLALCHEMY_CONNECT_ARGS
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -280,6 +284,11 @@ VACANTES = [
 @app.get("/api/vacantes")
 async def get_vacantes():
     return JSONResponse({"vacantes": VACANTES})
+
+
+@app.get("/api/health")
+async def healthcheck():
+    return {"status": "ok"}
 
 
 @app.get("/", response_class=HTMLResponse)
